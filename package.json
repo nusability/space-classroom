@@ -1,0 +1,18 @@
+{
+  "name": "space-classroom",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "A 3D space simulator for teaching kids about day/night, seasons, and moon phases.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

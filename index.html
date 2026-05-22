@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Space Classroom — Sun, Earth & Moon</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="title" class="panel">
+  <div class="tt" data-i18n="appName">🌞 Space Classroom</div>
+  <div class="ts" data-i18n="subtitle">Sun · Earth · Moon — a model to explore together</div>
+</div>
+<button id="helpBtn" title="Help">?</button>
+
+<div id="rightDock">
+  <div class="panel" id="info">
+    <div class="phead"><span data-i18n="panelInfo">Right now</span><span class="caret">▾</span></div>
+    <div class="pbody">
+      <div class="irow"><span>📅 <span data-i18n="lblDate">Date</span></span><b id="i-date">—</b></div>
+      <div class="irow"><span>🌍 <span data-i18n="lblNorth">North half</span></span><b id="i-north">—</b></div>
+      <div class="irow"><span>🌏 <span data-i18n="lblSouth">South half</span></span><b id="i-south">—</b></div>
+      <div class="irow"><span>☀️ <span data-i18n="lblSunOver">Sun overhead</span></span><b id="i-decl">—</b></div>
+      <div class="moonbox">
+        <canvas id="phaseIcon" width="120" height="120"></canvas>
+        <div><b id="i-phase">—</b><div class="sub" id="i-illum">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="controls">
+    <div class="phead"><span data-i18n="panelControls">Controls</span><span class="caret">▾</span></div>
+    <div class="pbody">
+      <div class="ihead" data-i18n="lessonsHead">Guided lessons</div>
+      <div class="lessons">
+        <button data-lesson="day"><span class="emo">🕐</span><span data-i18n="lessonDay">Day &amp; Night</span></button>
+        <button data-lesson="seasons"><span class="emo">🍂</span><span data-i18n="lessonSeasons">The Seasons</span></button>
+        <button data-lesson="moon"><span class="emo">🌙</span><span data-i18n="lessonMoon">Moon Phases</span></button>
+      </div>
+      <hr>
+      <div class="row col">
+        <span class="lbl" data-i18n="lblLookAt">Look at — or click a body</span>
+        <div class="seg" id="focusSeg">
+          <button data-focus="earth" class="on"><span class="emo">🌍</span><span data-i18n="earth">Earth</span></button>
+          <button data-focus="moon"><span class="emo">🌙</span><span data-i18n="moon">Moon</span></button>
+          <button data-focus="sun"><span class="emo">☀️</span><span data-i18n="sun">Sun</span></button>
+        </div>
+        <button id="fromEarthBtn"><span class="emo">🌙</span><span data-i18n="fromEarthBtn">Moon from Earth</span></button>
+        <button id="fromSunBtn"><span class="emo">☀️</span><span data-i18n="fromSunBtn">Earth from Sun</span></button>
+      </div>
+      <div class="row">
+        <button id="playBtn" class="primary"><span class="emo" id="playIcon">⏸</span><span id="playText">Pause</span></button>
+        <button id="resetBtn"><span class="emo">↺</span><span data-i18n="btnReset">Reset</span></button>
+      </div>
+      <div class="row col">
+        <div class="lblrow"><span data-i18n="lblSpeed">Speed of time</span><span id="speedVal">—</span></div>
+        <input type="range" id="speed" min="0" max="1000" value="489" />
+        <div class="presets">
+          <button data-dps="0.2"><span class="emo">🐢</span><span data-i18n="presetSlow">Slow</span></button>
+          <button data-dps="2"><span class="emo">🚶</span><span data-i18n="presetMedium">Medium</span></button>
+          <button data-dps="22"><span class="emo">🚀</span><span data-i18n="presetFast">Fast</span></button>
+        </div>
+      </div>
+      <div class="row chk">
+        <label><input type="checkbox" id="t-orbits" checked><span data-i18n="togOrbits">Orbit paths</span></label>
+        <label><input type="checkbox" id="t-markers" checked><span data-i18n="togMarkers">Season markers</span></label>
+        <label><input type="checkbox" id="t-axis" checked><span data-i18n="togAxis">Earth's axis</span></label>
+        <label><input type="checkbox" id="t-globe"><span data-i18n="togGlobe">Globe lines</span></label>
+        <label><input type="checkbox" id="t-rays"><span data-i18n="togRays">Sunlight rays</span></label>
+        <label><input type="checkbox" id="t-labels" checked><span data-i18n="togLabels">Labels</span></label>
+        <label><input type="checkbox" id="t-planets"><span data-i18n="togPlanets">Other planets</span></label>
+      </div>
+      <hr>
+      <div class="row">
+        <span class="lbl">🌐</span>
+        <div class="seg lang" id="langSeg">
+          <button data-lang="en">English</button>
+          <button data-lang="de">Deutsch</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tip" class="hidden"><span class="dot"></span><span id="tipText"></span><button id="tipClose">×</button></div>
+
+<div id="intro">
+  <div class="card">
+    <div class="introtop">
+      <h1 data-i18n="introTitle">🌞 Space Classroom</h1>
+      <div class="seg lang" id="langSegIntro">
+        <button data-lang="en">EN</button>
+        <button data-lang="de">DE</button>
+      </div>
+    </div>
+    <p data-i18n-html="introP1">A little model of the <b>Sun</b>, <b>Earth</b> and <b>Moon</b> to explore together. Sizes and distances aren't to scale — everything is set up for learning, not for accuracy.</p>
+    <div class="three">
+      <div><span>🕐</span><b data-i18n="lessonDay">Day &amp; Night</b><small data-i18n="card1">Earth spins — one side faces the Sun, the other is in the dark.</small></div>
+      <div><span>🍂</span><b data-i18n="lessonSeasons">The Seasons</b><small data-i18n="card2">Earth is tilted. Through the year each half leans toward or away from the Sun.</small></div>
+      <div><span>🌙</span><b data-i18n="lessonMoon">Moon Phases</b><small data-i18n="card3">The Sun lights one half of the Moon; we see it from changing angles.</small></div>
+    </div>
+    <p class="hint" data-i18n="introHint">🖱️ Drag to circle around · Scroll / pinch to zoom · The body you pick stays in view.</p>
+    <div class="introbtns">
+      <button data-lesson="day" data-i18n="introStartDay">Start with Day &amp; Night</button>
+      <button data-lesson="seasons" data-i18n="introStartSeasons">Start with Seasons</button>
+      <button data-lesson="moon" data-i18n="introStartMoon">Start with Moon Phases</button>
+      <button id="freeBtn" class="primary" data-i18n="introFree">Just let me explore</button>
+    </div>
+  </div>
+</div>
+
+<noscript><p style="color:#fff;padding:20px">Please enable JavaScript to run the simulator.</p></noscript>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
