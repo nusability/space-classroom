@@ -278,7 +278,7 @@ moonOrbitPlane.add(moonOrbitRing);
 // Planet orbit rings — one per planet, sitting inside the planet's tilted plane
 // so they reveal the inclination too.
 for(const pb of planetBodies){
-  const ring = makeOrbitRing(pb.eduOrbit, 0x6c7a96, 0.55, 1.6);
+  const ring = makeOrbitRing(pb.eduOrbit, 0x7e8aa6, 0.85, 1.8);
   pb.tilt.add(ring);
   pb.ring = ring;
 }
@@ -352,6 +352,11 @@ function setLabel(sp,text){
 
 // scale all visible labels to a constant pixel height each frame
 const tmpVec = new THREE.Vector3();
+function ancestorScaleX(obj){
+  let s = 1, o = obj.parent;
+  while(o){ s *= o.scale.x; o = o.parent; }
+  return s || 1;
+}
 function tickLabelSizes(){
   const screenH = renderer.domElement.clientHeight || innerHeight;
   const k0 = 2 * Math.tan(camera.fov * Math.PI/360) / screenH;
@@ -360,7 +365,11 @@ function tickLabelSizes(){
     lbl.getWorldPosition(tmpVec);
     const dist = tmpVec.distanceTo(camera.position);
     const k = dist * k0;
-    lbl.scale.set(lbl.userData.aspect * lbl.userData.px * k, lbl.userData.px * k, 1);
+    // Compensate for any scaled ancestors so the sprite stays at the
+    // intended pixel size (e.g. the Sun's scale grows to ~20× in real mode).
+    const ps = ancestorScaleX(lbl);
+    lbl.scale.set(lbl.userData.aspect * lbl.userData.px * k / ps,
+                  lbl.userData.px * k / ps, 1);
   }
 }
 
@@ -390,15 +399,12 @@ for(const e of markerLabelEntries){
   seasonLabels.push({ sprite:sp, key:e.key, baseX:e.baseX, baseZ:e.baseZ });
 }
 
-const planetLabels = [];     // for re-translation
+const planetLabels = [];
 for(const pb of planetBodies){
   const sp = makeLabel(t('pl_'+pb.key), '#cdd6ea', 18);
-  sp.userData.followKey = pb.key;
   pb.group.add(sp);
-  // label position will be updated per frame based on planet radius * scale factor;
-  // for now place at (0, radius*1.5, 0) inside the planet group
-  const r = PLANETS.find(p=>p.key===pb.key).radius;
-  sp.position.set(0, r*1.7, 0);
+  sp.position.set(0, pb.eduR * 1.4, 0);
+  pb.labelSprite = sp;
   planetLabels.push({ sprite:sp, key:pb.key });
 }
 
@@ -563,6 +569,8 @@ function tickRealScale(dt){
     pb.mesh.scale.setScalar(r / pb.eduR);
     pb.currentOrbit = THREE.MathUtils.lerp(pb.eduOrbit, pb.realOrbit, s);
     pb.ring.scale.setScalar(pb.currentOrbit / pb.eduOrbit);
+    // float the label just above the planet's current top (the mesh grows)
+    if(pb.labelSprite) pb.labelSprite.position.y = r * 1.3;
   }
   // Their moons
   for(const m of planetMoons){
@@ -740,9 +748,14 @@ el('resetBtn').addEventListener('click', () => {
 });
 
 el('t-realscale').addEventListener('change', e => {
-  state.realTarget = e.target.checked ? 1 : 0;
-  if(e.target.checked) showTip('tipRealScale');
+  const on = e.target.checked;
+  state.realTarget = on ? 1 : 0;
+  if(on) showTip('tipRealScale');
   else if(state.tipKey === 'tipRealScale') hideTip();
+  // bring the camera to a sensible distance for the new scale so the focused
+  // body doesn't get lost when Earth flies way out (or comes back)
+  if(state.focus === 'earth') setFocus('earth', on ? 7 : 14);
+  else if(state.focus === 'moon')  setFocus('moon',  on ? 3 : 5);
 });
 
 document.querySelectorAll('.phead').forEach(h =>

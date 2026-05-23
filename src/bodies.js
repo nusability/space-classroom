@@ -15,29 +15,31 @@ const DEG = Math.PI/180;
 // realR / realOrbit are computed from real Earth-radii and AU ratios
 //   (Earth radius = 1.7 units, Earth orbit = 78 units).
 // Inclinations: real orbital-plane tilt to the ecliptic.
+// Real orbit values use the same anchor as Earth (1 AU = 39,918 units in real mode):
+//   realOrbit = (real AU) * 39,918
 export const PLANETS = [
-  { key:'mercury', eduR:0.55, realR:0.65,  eduOrbit:36,  realOrbit:30.2,  period:0.2408,
+  { key:'mercury', eduR:0.55, realR:0.65,  eduOrbit:36,  realOrbit:15_449,    period:0.2408,
     axisTilt:0.03,    incl:7.00*DEG,
     factory: ()=>makeRockyTexture('#8e8276','#5e554c','#bba89a',60) },
-  { key:'venus',   eduR:1.45, realR:1.61,  eduOrbit:55,  realOrbit:56.4,  period:0.6152,
+  { key:'venus',   eduR:1.45, realR:1.61,  eduOrbit:55,  realOrbit:28_861,    period:0.6152,
     axisTilt:177*DEG, incl:3.39*DEG,
     factory: ()=>makeRockyTexture('#d8b787','#9a7a4d','#f3d7a1',0) },
-  // Earth: eduR 1.7, eduOrbit 78 — handled in main.js (incl ≡ 0)
-  { key:'mars',    eduR:0.95, realR:0.90,  eduOrbit:108, realOrbit:118.9, period:1.881,
+  // Earth: eduR 1.7, eduOrbit 78 (real 39,918) — handled in main.js
+  { key:'mars',    eduR:0.95, realR:0.90,  eduOrbit:108, realOrbit:60_834,    period:1.881,
     axisTilt:25.2*DEG, incl:1.85*DEG,
     factory: ()=>makeRockyTexture('#b85a3a','#7d3a23','#dc8f6b',30) },
-  { key:'jupiter', eduR:4.4,  realR:19.06, eduOrbit:185, realOrbit:405.8, period:11.862,
+  { key:'jupiter', eduR:4.4,  realR:19.06, eduOrbit:185, realOrbit:207_574,   period:11.862,
     axisTilt:3.1*DEG, incl:1.30*DEG,
     factory: ()=>makeBandedTexture(Object.assign(
       ['#b69a73','#d6b88a','#8c7656','#e3c79a','#7a6444'],
       { spot:'rgba(190,90,60,0.9)' }), 18) },
-  { key:'saturn',  eduR:3.7,  realR:16.06, eduOrbit:260, realOrbit:745.3, period:29.457,
+  { key:'saturn',  eduR:3.7,  realR:16.06, eduOrbit:260, realOrbit:381_217,   period:29.457,
     axisTilt:26.7*DEG, incl:2.49*DEG, rings:true,
     factory: ()=>makeBandedTexture(['#dcc196','#e8d2ad','#b8a079','#efddb6','#a08762'], 16) },
-  { key:'uranus',  eduR:2.2,  realR:6.81,  eduOrbit:355, realOrbit:1499,  period:84.011,
+  { key:'uranus',  eduR:2.2,  realR:6.81,  eduOrbit:355, realOrbit:767_224,   period:84.011,
     axisTilt:97.8*DEG, incl:0.77*DEG,
     factory: ()=>makeBandedTexture(['#a8d5d8','#b8dde0','#92c3c8','#cfe6e7','#7fb1b6'], 10) },
-  { key:'neptune', eduR:2.1,  realR:6.60,  eduOrbit:445, realOrbit:2349,  period:164.79,
+  { key:'neptune', eduR:2.1,  realR:6.60,  eduOrbit:445, realOrbit:1_201_531, period:164.79,
     axisTilt:28.3*DEG, incl:1.77*DEG,
     factory: ()=>makeBandedTexture(['#3859a7','#4769bb','#2b4988','#5a7fc8','#23396f'], 12) }
 ];
