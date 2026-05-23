@@ -723,15 +723,11 @@ el('playBtn').addEventListener('click', () => setPlaying(!state.playing));
 document.querySelectorAll('#focusSeg button').forEach(b =>
   b.addEventListener('click', () => setFocus(b.dataset.focus)));
 
-// "Orbit paths" covers EVERY orbit ring — Earth, the Moon, all planets, and
-// every gas-giant moon. "Labels" covers EVERY label sprite — Sun, Earth,
-// Moon, planets, plus the N marker. "Other planets" toggles the planet
-// bodies + their moons (a separate axis from the orbits).
-const allOrbitRings = [
-  earthOrbitRing, moonOrbitRing,
-  ...planetBodies.map(pb => pb.ring),
-  ...planetMoons.map(m => m.ring)
-];
+// "Orbit paths" covers every orbit ring in the scene, but planet (and
+// planet-moon) rings ALSO require "Other planets" to be on — if you hide
+// the planets you don't want their orbit ghosts hanging around.
+// "Labels" covers every label sprite. "Other planets" toggles the planet
+// bodies + their moons.
 const allPlanetBodies = planetBodies.map(pb => pb.group);
 const allLabels = [
   sunLabel, earthLabel, moonLabel, nLabel,
@@ -740,7 +736,7 @@ const allLabels = [
 planetsContainer.visible = true;        // wrapper stays on; individual children are toggled
 
 const toggleMap = {
-  't-orbits':  allOrbitRings,
+  't-orbits':  [earthOrbitRing, moonOrbitRing],
   't-markers': [seasonMarkers],
   't-axis':    [axisGroup, vertRef],
   't-globe':   [globeLines],
@@ -750,7 +746,14 @@ const toggleMap = {
 };
 function applyToggle(id){
   const on = el(id).checked;
-  toggleMap[id].forEach(o => o.visible = on);
+  if(toggleMap[id]) toggleMap[id].forEach(o => o.visible = on);
+  // planet orbits & planet-moon orbits are visible only when BOTH
+  // "orbit paths" and "other planets" are on
+  if(id === 't-orbits' || id === 't-planets'){
+    const both = el('t-orbits').checked && el('t-planets').checked;
+    for(const pb of planetBodies)  pb.ring.visible = both;
+    for(const m  of planetMoons)   m.ring.visible  = both;
+  }
 }
 Object.keys(toggleMap).forEach(id => {
   el(id).addEventListener('change', () => applyToggle(id));
