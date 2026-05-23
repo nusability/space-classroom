@@ -18,10 +18,15 @@ const DEG = Math.PI / 180;
 const TILT = 23.5 * DEG;
 const MOON_INCLINATION = 5.14 * DEG;          // Moon orbit's tilt to the ecliptic — real
 
-const SUN_R = 9, EARTH_R = 1.7, MOON_R = 0.7;
-const EARTH_ORBIT = 78, MOON_ORBIT = 7.0;
-// Real lunar distance from Earth, in Earth-radii: 60.336 → in our anchored units:
-const MOON_REAL_ORBIT = EARTH_R * 60.336;     // ≈ 102.6
+// Educational ("edu") scale — sizes/distances chosen for visibility.
+// Real scale — everything anchored to Earth-radius = 1.7 units.
+//   1 AU = 23,481 Earth radii ; Sun radius = 109.2 Earth radii ;
+//   Moon distance = 60.3 Earth radii.
+const EARTH_R = 1.7, MOON_R = 0.7;
+const SUN_R = 9,        SUN_R_REAL = EARTH_R * 109.2;        // ≈ 185.6
+const EARTH_ORBIT = 78, EARTH_ORBIT_REAL = EARTH_R * 23481;  // ≈ 39,918
+const MOON_ORBIT  = 7,  MOON_ORBIT_REAL  = EARTH_R * 60.336; // ≈ 102.6
+const MOON_R_REAL = EARTH_R * 0.2727;                         // ≈ 0.464
 const YEAR = 365.25, MONTH_SIDEREAL = 27.32, JUNE_SOLSTICE = 172;
 
 // Mutable language (re-exported so we can rebind on language switch)
@@ -29,7 +34,10 @@ let lang = _lang;
 
 /* ---------- renderer / scene / camera ---------- */
 const container = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+const renderer = new THREE.WebGLRenderer({
+  antialias:true, powerPreference:'high-performance',
+  logarithmicDepthBuffer:true   // needed for the huge dynamic range in real-scale mode
+});
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -40,7 +48,8 @@ container.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.05, 9000);
+// Far plane must reach beyond Neptune's real orbit (~1.2M units).
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.05, 5_000_000);
 camera.position.set(11, 6, 14);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -60,8 +69,10 @@ scene.add(new THREE.AmbientLight(0x3d4d70, 0.32));
 {
   const N=3600,pos=new Float32Array(N*3),col=new Float32Array(N*3);
   const tints=[[1,1,1],[0.8,0.86,1],[1,0.92,0.78],[1,0.83,0.7]];
+  // Stars sit far beyond even Neptune's real-scale orbit (~1.2M) so they
+  // never appear "inside" the solar system.
   for(let i=0;i<N;i++){
-    const u=Math.random()*2-1,th=Math.random()*TAU,r=1900,s=Math.sqrt(1-u*u);
+    const u=Math.random()*2-1,th=Math.random()*TAU,r=4_000_000,s=Math.sqrt(1-u*u);
     pos[i*3]=Math.cos(th)*s*r; pos[i*3+1]=u*r; pos[i*3+2]=Math.sin(th)*s*r;
     const c=tints[Math.random()*tints.length|0],b=0.5+Math.random()*0.5;
     col[i*3]=c[0]*b; col[i*3+1]=c[1]*b; col[i*3+2]=c[2]*b;
@@ -253,9 +264,10 @@ function makeOrbitRing(radius, color, opacity, width){
   return line;
 }
 
-// Earth orbit ring
+// Earth orbit ring (kept as a ref so we can scale it in real-scale mode)
 const orbitPaths = new THREE.Group();
-orbitPaths.add(makeOrbitRing(EARTH_ORBIT, 0x6f96d6, 0.75, 2.0));
+const earthOrbitRing = makeOrbitRing(EARTH_ORBIT, 0x6f96d6, 0.75, 2.0);
+orbitPaths.add(earthOrbitRing);
 scene.add(orbitPaths);
 
 // Moon orbit ring lives on the tilted plane (its visibility is toggled separately
@@ -280,15 +292,17 @@ const markerSpec = [
   { ang:180, key:'mkDec',  color:'#9fd0ff' },
   { ang:270, key:'mkMar',  color:'#ffffff' }
 ];
-const markerLabelEntries = [];      // { sprite, key }
+const markerLabelEntries = [];      // { sprite, key, dot, baseX, baseZ }
+const seasonDots = [];              // dots whose positions need to scale with Earth's orbit
 for(const m of markerSpec){
   const px=Math.cos(m.ang*DEG)*EARTH_ORBIT, pz=Math.sin(m.ang*DEG)*EARTH_ORBIT;
   const dot=new THREE.Mesh(new THREE.SphereGeometry(0.95,16,12),
     new THREE.MeshBasicMaterial({color:m.color}));
   dot.position.set(px,0,pz);
+  dot.userData = { baseX:px, baseZ:pz };
   seasonMarkers.add(dot);
-  // marker label is added later, after makeLabel is defined
-  markerLabelEntries.push({ pos:{x:px,y:5.5,z:pz}, key:m.key, color:m.color });
+  seasonDots.push(dot);
+  markerLabelEntries.push({ baseX:px, baseZ:pz, key:m.key, color:m.color });
 }
 
 /* ---------- Sunlight rays helper ---------- */
@@ -367,12 +381,13 @@ const sunLabel = makeLabel(t('sun'), '#ffd98a', 32);
 sunLabel.position.set(0, SUN_R*1.4, 0);
 sun.add(sunLabel);
 
-const seasonLabels = [];     // for re-translation
+const seasonLabels = [];     // { sprite, key, baseX, baseZ } — positions scale with Earth's orbit
 for(const e of markerLabelEntries){
   const sp = makeLabel(t(e.key), e.color, 22);
-  sp.position.set(e.pos.x, e.pos.y, e.pos.z);
+  sp.position.set(e.baseX, 0, e.baseZ);            // sprite renders above this point
+  sp.center.set(0.5, 0);                           // anchor at sprite's bottom edge
   seasonMarkers.add(sp);
-  seasonLabels.push({ sprite:sp, key:e.key });
+  seasonLabels.push({ sprite:sp, key:e.key, baseX:e.baseX, baseZ:e.baseZ });
 }
 
 const planetLabels = [];     // for re-translation
@@ -392,7 +407,8 @@ for(const pb of planetBodies){
    ============================================================ */
 const state = { simDays:0, playing:true, daysPerSecond:1,
                 focus:'earth', tipKey:null, backDist:EARTH_R*3.6,
-                realTarget:0, realProgress:0, realScale:0 };
+                realTarget:0, realProgress:0, realScale:0,
+                currentEarthOrbit:EARTH_ORBIT, currentSunR:SUN_R };
 const NORTH_AXIS = new THREE.Vector3(-Math.sin(TILT), Math.cos(TILT), 0);
 const WORLD_UP = new THREE.Vector3(0,1,0);
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
@@ -438,12 +454,14 @@ function setFocus(name, dist, dir){
   const base = { u:0, dur:0.85,
                  fromCam:camera.position.clone(), fromTgt:controls.target.clone() };
   if(name==='fromEarth' || name==='fromSun'){
-    state.backDist = name==='fromEarth' ? EARTH_R*3.6 : 22;
+    // backDist is in world units; for fromSun in real-scale mode, the Sun
+    // is huge, so backDist scales with the current Sun radius.
+    state.backDist = name==='fromEarth' ? EARTH_R*3.6 : state.currentSunR*2.5;
     trans = { ...base, toLocked:name };
     return;
   }
-  controls.minDistance = name==='moon'?0.9 : name==='sun'?SUN_R*1.35 : 2.6;
-  const dd = dist || (name==='earth'?14 : name==='moon'?5.0 : SUN_R*4.6);
+  controls.minDistance = name==='moon'?0.9 : name==='sun'?state.currentSunR*1.35 : 2.6;
+  const dd = dist || (name==='earth'?14 : name==='moon'?5.0 : state.currentSunR*4.6);
   let d = dir ? dir.clone() : camera.position.clone().sub(controls.target);
   if(d.lengthSq()<1e-6) d.set(1, name==='sun'?0.5:0.45, 1);
   d.normalize();
@@ -461,6 +479,8 @@ function fromEarthCamPose(outPos, outTgt){
              tmpC.z - dz/dl*state.backDist);
 }
 function fromSunCamPose(outPos, outTgt){
+  // keep the camera outside the Sun even as it grows in real-scale mode
+  if(state.backDist < state.currentSunR * 1.4) state.backDist = state.currentSunR * 1.4;
   earth.getWorldPosition(outTgt);
   const dl=Math.hypot(outTgt.x,outTgt.z)||1;
   outPos.set(-outTgt.x/dl*state.backDist,
@@ -484,23 +504,23 @@ function updateFromSunCamera(){
 function updateBodies(){
   const d=state.simDays;
   const thetaE=((d-JUNE_SOLSTICE)/YEAR)*TAU;
-  earthPivot.position.set(Math.cos(thetaE)*EARTH_ORBIT, 0, Math.sin(thetaE)*EARTH_ORBIT);
+  const eo = state.currentEarthOrbit;
+  earthPivot.position.set(Math.cos(thetaE)*eo, 0, Math.sin(thetaE)*eo);
   earth.rotation.y = d*TAU;
   clouds.rotation.y = d*TAU*0.92;
   moonGroup.rotation.y = (d/MONTH_SIDEREAL)*TAU;
   sun.rotation.y = d*0.06;
 
-  // planets — position inside each planet's tilted plane
-  if(planetsContainer.visible){
-    for(const pb of planetBodies){
-      const o = pb.currentOrbit;
-      const theta = (d / (pb.period*YEAR))*TAU + pb.phase;
-      pb.group.position.set(Math.cos(theta)*o, 0, Math.sin(theta)*o);
-      pb.mesh.rotation.y = d*TAU/3;
-    }
-    for(const m of planetMoons){
-      m.pivot.rotation.y = (d / m.period)*TAU + m.phase;
-    }
+  // planets — position inside each planet's tilted plane (always updated,
+  // even when individual bodies are hidden, so orbit rings stay in sync)
+  for(const pb of planetBodies){
+    const o = pb.currentOrbit;
+    const theta = (d / (pb.period*YEAR))*TAU + pb.phase;
+    pb.group.position.set(Math.cos(theta)*o, 0, Math.sin(theta)*o);
+    pb.mesh.rotation.y = d*TAU/3;
+  }
+  for(const m of planetMoons){
+    m.pivot.rotation.y = (d / m.period)*TAU + m.phase;
   }
 
   // atmosphere sunDir
@@ -521,22 +541,45 @@ function tickRealScale(dt){
   state.realScale = u<0.5 ? 2*u*u : 1-Math.pow(-2*u+2, 2)/2;
   const s = state.realScale;
 
+  // Sun
+  state.currentSunR = THREE.MathUtils.lerp(SUN_R, SUN_R_REAL, s);
+  sun.scale.setScalar(state.currentSunR / SUN_R);
+
+  // Earth orbit (anchor — the big one)
+  state.currentEarthOrbit = THREE.MathUtils.lerp(EARTH_ORBIT, EARTH_ORBIT_REAL, s);
+  const eRatio = state.currentEarthOrbit / EARTH_ORBIT;
+  earthOrbitRing.scale.setScalar(eRatio);
+  for(let i=0;i<seasonDots.length;i++){
+    seasonDots[i].position.set(seasonDots[i].userData.baseX * eRatio, 0,
+                               seasonDots[i].userData.baseZ * eRatio);
+  }
+  for(const lbl of seasonLabels){
+    lbl.sprite.position.set(lbl.baseX * eRatio, 0, lbl.baseZ * eRatio);
+  }
+
+  // Other planets
   for(const pb of planetBodies){
     const r = THREE.MathUtils.lerp(pb.eduR, pb.realR, s);
     pb.mesh.scale.setScalar(r / pb.eduR);
     pb.currentOrbit = THREE.MathUtils.lerp(pb.eduOrbit, pb.realOrbit, s);
     pb.ring.scale.setScalar(pb.currentOrbit / pb.eduOrbit);
   }
+  // Their moons
   for(const m of planetMoons){
     const r = THREE.MathUtils.lerp(m.eduR, m.realR, s);
     m.mesh.scale.setScalar(r / m.eduR);
     m.mesh.position.x = THREE.MathUtils.lerp(m.eduOrbit, m.realOrbit, s);
   }
-  const mo = THREE.MathUtils.lerp(MOON_ORBIT, MOON_REAL_ORBIT, s);
+
+  // Earth's Moon
+  const mo = THREE.MathUtils.lerp(MOON_ORBIT, MOON_ORBIT_REAL, s);
   moon.position.x = mo;
   if(moonLabel) moonLabel.position.x = mo;
+  moon.scale.setScalar(THREE.MathUtils.lerp(1, MOON_R_REAL/MOON_R, s));
   moonOrbitRing.scale.setScalar(mo / MOON_ORBIT);
-  controls.maxDistance = THREE.MathUtils.lerp(900, 5000, s);
+
+  // Zoom range — needs to span well past Neptune's real orbit
+  controls.maxDistance = THREE.MathUtils.lerp(900, 3_000_000, s);
 }
 
 function updateRays(){
@@ -662,14 +705,20 @@ el('playBtn').addEventListener('click', () => setPlaying(!state.playing));
 document.querySelectorAll('#focusSeg button').forEach(b =>
   b.addEventListener('click', () => setFocus(b.dataset.focus)));
 
+// All orbit rings (earth, moon, planets) toggle together with t-orbits.
+// All planet bodies (with their moons) toggle together with t-planets.
+const allOrbitRings = [earthOrbitRing, moonOrbitRing, ...planetBodies.map(pb => pb.ring)];
+const allPlanetBodies = planetBodies.map(pb => pb.group);
+planetsContainer.visible = true;        // wrapper stays on; individual children are toggled
+
 const toggleMap = {
-  't-orbits':[orbitPaths, moonOrbitRing],
-  't-markers':[seasonMarkers],
-  't-axis':[axisGroup, vertRef],
-  't-globe':[globeLines],
-  't-rays':[sunRays],
-  't-labels':[sunLabel, moonLabel],
-  't-planets':[planetsContainer]
+  't-orbits':  allOrbitRings,
+  't-markers': [seasonMarkers],
+  't-axis':    [axisGroup, vertRef],
+  't-globe':   [globeLines],
+  't-rays':    [sunRays],
+  't-labels':  [sunLabel, moonLabel],
+  't-planets': allPlanetBodies
 };
 function applyToggle(id){
   const on = el(id).checked;
@@ -781,7 +830,7 @@ const dom=renderer.domElement;
 let downX=0, downY=0, pointerDown=false;
 function clickables(){
   const arr=[earth, moon, sun];
-  if(planetsGroup.visible) for(const pb of planetBodies) arr.push(pb.mesh);
+  if(el('t-planets').checked) for(const pb of planetBodies) arr.push(pb.mesh);
   return arr;
 }
 function pickBody(e){
@@ -815,8 +864,10 @@ dom.addEventListener('wheel', e => {
       state.backDist * (1 + Math.sign(e.deltaY)*0.12), EARTH_R*2.4, EARTH_R*13);
   } else if(state.focus==='fromSun'){
     e.preventDefault();
+    // clamps scale with the Sun's current radius (real-scale mode)
     state.backDist = THREE.MathUtils.clamp(
-      state.backDist * (1 + Math.sign(e.deltaY)*0.12), 12, 80);
+      state.backDist * (1 + Math.sign(e.deltaY)*0.12),
+      state.currentSunR*1.4, state.currentSunR*30);
   }
 }, { passive:false });
 
@@ -861,6 +912,16 @@ function animate(){
     tmpB.copy(camera.position).sub(controls.target);
     controls.target.copy(tmpA);
     camera.position.copy(tmpA).add(tmpB);
+    // Sun-focus + real-scale mode: keep camera outside the (now huge) Sun
+    if(state.focus==='sun'){
+      const minD = state.currentSunR * 1.35;
+      controls.minDistance = minD;
+      const d = camera.position.distanceTo(controls.target);
+      if(d < minD){
+        const off = camera.position.clone().sub(controls.target).normalize().multiplyScalar(minD*1.05);
+        camera.position.copy(controls.target).add(off);
+      }
+    }
     controls.update();
   }
 
