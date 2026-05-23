@@ -236,7 +236,7 @@ for(const m of MOONS){
   mesh.position.x = m.eduOrbit;
   pivot.add(mesh);
   planetMoons.push({
-    key:m.key, planet:m.planet, pivot, mesh,
+    key:m.key, planet:m.planet, pb, pivot, mesh,
     eduR:m.eduR, realR:m.realR,
     eduOrbit:m.eduOrbit, realOrbit:m.realOrbit,
     period:m.period, phase:Math.random()*TAU
@@ -246,7 +246,9 @@ for(const m of MOONS){
 /* ---------- Thick orbit lines (Line2) ---------- */
 const lineMaterials = [];
 function makeOrbitRing(radius, color, opacity, width){
-  const N=240, pts=new Float32Array((N+1)*3);
+  // High segment count keeps the ring visually circular at real scale —
+  // Earth's orbit is ~40,000 units; coarse rings show as polygons.
+  const N=1024, pts=new Float32Array((N+1)*3);
   for(let i=0;i<=N;i++){
     const a=i/N*TAU;
     pts[i*3]   = Math.cos(a)*radius;
@@ -281,6 +283,12 @@ for(const pb of planetBodies){
   const ring = makeOrbitRing(pb.eduOrbit, 0x7e8aa6, 0.85, 1.8);
   pb.tilt.add(ring);
   pb.ring = ring;
+}
+// Orbit rings for the planet moons (Galilean + Titan + Triton)
+for(const m of planetMoons){
+  const ring = makeOrbitRing(m.eduOrbit, 0x8a96b0, 0.7, 1.4);
+  m.pb.group.add(ring);
+  m.ring = ring;
 }
 
 /* ---------- Season markers ---------- */
@@ -572,11 +580,13 @@ function tickRealScale(dt){
     // float the label just above the planet's current top (the mesh grows)
     if(pb.labelSprite) pb.labelSprite.position.y = r * 1.3;
   }
-  // Their moons
+  // Their moons (sizes, orbit positions, and orbit rings)
   for(const m of planetMoons){
     const r = THREE.MathUtils.lerp(m.eduR, m.realR, s);
     m.mesh.scale.setScalar(r / m.eduR);
-    m.mesh.position.x = THREE.MathUtils.lerp(m.eduOrbit, m.realOrbit, s);
+    const o = THREE.MathUtils.lerp(m.eduOrbit, m.realOrbit, s);
+    m.mesh.position.x = o;
+    if(m.ring) m.ring.scale.setScalar(o / m.eduOrbit);
   }
 
   // Earth's Moon
@@ -713,10 +723,20 @@ el('playBtn').addEventListener('click', () => setPlaying(!state.playing));
 document.querySelectorAll('#focusSeg button').forEach(b =>
   b.addEventListener('click', () => setFocus(b.dataset.focus)));
 
-// All orbit rings (earth, moon, planets) toggle together with t-orbits.
-// All planet bodies (with their moons) toggle together with t-planets.
-const allOrbitRings = [earthOrbitRing, moonOrbitRing, ...planetBodies.map(pb => pb.ring)];
+// "Orbit paths" covers EVERY orbit ring — Earth, the Moon, all planets, and
+// every gas-giant moon. "Labels" covers EVERY label sprite — Sun, Earth,
+// Moon, planets, plus the N marker. "Other planets" toggles the planet
+// bodies + their moons (a separate axis from the orbits).
+const allOrbitRings = [
+  earthOrbitRing, moonOrbitRing,
+  ...planetBodies.map(pb => pb.ring),
+  ...planetMoons.map(m => m.ring)
+];
 const allPlanetBodies = planetBodies.map(pb => pb.group);
+const allLabels = [
+  sunLabel, earthLabel, moonLabel, nLabel,
+  ...planetBodies.map(pb => pb.labelSprite)
+];
 planetsContainer.visible = true;        // wrapper stays on; individual children are toggled
 
 const toggleMap = {
@@ -725,7 +745,7 @@ const toggleMap = {
   't-axis':    [axisGroup, vertRef],
   't-globe':   [globeLines],
   't-rays':    [sunRays],
-  't-labels':  [sunLabel, moonLabel],
+  't-labels':  allLabels,
   't-planets': allPlanetBodies
 };
 function applyToggle(id){
