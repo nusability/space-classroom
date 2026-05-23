@@ -10,7 +10,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { I18N, lang as _lang, t, setLang } from './i18n.js';
 import { canvasTexture, makeGlowTexture, makeSunTexture,
          loadEarthTexture, loadEarthCloudsTexture, loadMoonTexture } from './textures.js';
-import { PLANETS, buildPlanet } from './bodies.js';
+import { PLANETS, MOONS, buildPlanet } from './bodies.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
@@ -20,6 +20,8 @@ const MOON_INCLINATION = 5.14 * DEG;          // Moon orbit's tilt to the eclipt
 
 const SUN_R = 9, EARTH_R = 1.7, MOON_R = 0.7;
 const EARTH_ORBIT = 78, MOON_ORBIT = 7.0;
+// Real lunar distance from Earth, in Earth-radii: 60.336 → in our anchored units:
+const MOON_REAL_ORBIT = EARTH_R * 60.336;     // ≈ 102.6
 const YEAR = 365.25, MONTH_SIDEREAL = 27.32, JUNE_SOLSTICE = 172;
 
 // Mutable language (re-exported so we can rebind on language switch)
@@ -189,18 +191,45 @@ const moon = new THREE.Mesh(
 moon.position.x = MOON_ORBIT;
 moonGroup.add(moon);
 
-/* ---------- Other planets ---------- */
-const planetsGroup = new THREE.Group();
-planetsGroup.visible = false;          // toggled by t-planets
-scene.add(planetsGroup);
+/* ---------- Other planets — each on its own (lightly) tilted orbital plane ---------- */
+const planetsContainer = new THREE.Group();
+planetsContainer.visible = false;       // toggled by t-planets
+scene.add(planetsContainer);
 
-const planetBodies = [];               // { key, group, mesh, period, phase }
+const planetBodies = [];                // { key, tilt, group, mesh, ring, ... }
 for(const p of PLANETS){
   const built = buildPlanet(p);
-  built.group.userData.phase = Math.random()*TAU;
-  planetsGroup.add(built.group);
-  planetBodies.push({ key:p.key, group:built.group, mesh:built.mesh,
-                      period:p.period, orbit:p.orbit });
+  const tilt = new THREE.Group();
+  tilt.rotation.x = p.incl;             // real inclination to the ecliptic
+  tilt.add(built.group);
+  planetsContainer.add(tilt);
+  planetBodies.push({
+    key:p.key, tilt, group:built.group, mesh:built.mesh,
+    eduR:p.eduR, realR:p.realR,
+    eduOrbit:p.eduOrbit, realOrbit:p.realOrbit, currentOrbit:p.eduOrbit,
+    period:p.period, phase:Math.random()*TAU
+  });
+}
+
+/* ---------- Planet moons (Galilean + Titan + Triton) ---------- */
+const planetMoons = [];
+for(const m of MOONS){
+  const pb = planetBodies.find(x => x.key === m.planet);
+  if(!pb) continue;
+  const pivot = new THREE.Group();      // rotates around Y → moon orbits planet
+  pb.group.add(pivot);
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(m.eduR, 24, 16),
+    new THREE.MeshStandardMaterial({ color:m.color, roughness:1, metalness:0 })
+  );
+  mesh.position.x = m.eduOrbit;
+  pivot.add(mesh);
+  planetMoons.push({
+    key:m.key, planet:m.planet, pivot, mesh,
+    eduR:m.eduR, realR:m.realR,
+    eduOrbit:m.eduOrbit, realOrbit:m.realOrbit,
+    period:m.period, phase:Math.random()*TAU
+  });
 }
 
 /* ---------- Thick orbit lines (Line2) ---------- */
@@ -234,12 +263,12 @@ scene.add(orbitPaths);
 const moonOrbitRing = makeOrbitRing(MOON_ORBIT, 0x9aa3b8, 0.85, 1.8);
 moonOrbitPlane.add(moonOrbitRing);
 
-// Planet orbit rings — created lazily; hidden until t-planets is on.
-const planetOrbits = new THREE.Group();
-planetOrbits.visible = false;
-scene.add(planetOrbits);
-for(const p of PLANETS){
-  planetOrbits.add(makeOrbitRing(p.orbit, 0x6c7a96, 0.55, 1.6));
+// Planet orbit rings — one per planet, sitting inside the planet's tilted plane
+// so they reveal the inclination too.
+for(const pb of planetBodies){
+  const ring = makeOrbitRing(pb.eduOrbit, 0x6c7a96, 0.55, 1.6);
+  pb.tilt.add(ring);
+  pb.ring = ring;
 }
 
 /* ---------- Season markers ---------- */
@@ -362,7 +391,8 @@ for(const pb of planetBodies){
    State & camera helpers
    ============================================================ */
 const state = { simDays:0, playing:true, daysPerSecond:1,
-                focus:'earth', tipKey:null, backDist:EARTH_R*3.6 };
+                focus:'earth', tipKey:null, backDist:EARTH_R*3.6,
+                realTarget:0, realProgress:0, realScale:0 };
 const NORTH_AXIS = new THREE.Vector3(-Math.sin(TILT), Math.cos(TILT), 0);
 const WORLD_UP = new THREE.Vector3(0,1,0);
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
@@ -460,18 +490,53 @@ function updateBodies(){
   moonGroup.rotation.y = (d/MONTH_SIDEREAL)*TAU;
   sun.rotation.y = d*0.06;
 
-  // planets
-  if(planetsGroup.visible){
+  // planets — position inside each planet's tilted plane
+  if(planetsContainer.visible){
     for(const pb of planetBodies){
-      const theta = (d / (pb.period*YEAR))*TAU + pb.group.userData.phase;
-      pb.group.position.set(Math.cos(theta)*pb.orbit, 0, Math.sin(theta)*pb.orbit);
-      pb.mesh.rotation.y = d*TAU/3;          // a gentle spin so they aren't dead
+      const o = pb.currentOrbit;
+      const theta = (d / (pb.period*YEAR))*TAU + pb.phase;
+      pb.group.position.set(Math.cos(theta)*o, 0, Math.sin(theta)*o);
+      pb.mesh.rotation.y = d*TAU/3;
+    }
+    for(const m of planetMoons){
+      m.pivot.rotation.y = (d / m.period)*TAU + m.phase;
     }
   }
 
   // atmosphere sunDir
   earthPivot.getWorldPosition(tmpA);
   atmosphere.material.uniforms.sunDir.value.copy(tmpA).multiplyScalar(-1).normalize();
+}
+
+// Animate the "Real scale" morph and apply the lerped sizes/orbits.
+function tickRealScale(dt){
+  const tgt = state.realTarget;
+  if(state.realProgress !== tgt){
+    const step = dt / 1.8;
+    state.realProgress = tgt > state.realProgress
+      ? Math.min(tgt, state.realProgress + step)
+      : Math.max(tgt, state.realProgress - step);
+  }
+  const u = state.realProgress;
+  state.realScale = u<0.5 ? 2*u*u : 1-Math.pow(-2*u+2, 2)/2;
+  const s = state.realScale;
+
+  for(const pb of planetBodies){
+    const r = THREE.MathUtils.lerp(pb.eduR, pb.realR, s);
+    pb.mesh.scale.setScalar(r / pb.eduR);
+    pb.currentOrbit = THREE.MathUtils.lerp(pb.eduOrbit, pb.realOrbit, s);
+    pb.ring.scale.setScalar(pb.currentOrbit / pb.eduOrbit);
+  }
+  for(const m of planetMoons){
+    const r = THREE.MathUtils.lerp(m.eduR, m.realR, s);
+    m.mesh.scale.setScalar(r / m.eduR);
+    m.mesh.position.x = THREE.MathUtils.lerp(m.eduOrbit, m.realOrbit, s);
+  }
+  const mo = THREE.MathUtils.lerp(MOON_ORBIT, MOON_REAL_ORBIT, s);
+  moon.position.x = mo;
+  if(moonLabel) moonLabel.position.x = mo;
+  moonOrbitRing.scale.setScalar(mo / MOON_ORBIT);
+  controls.maxDistance = THREE.MathUtils.lerp(900, 5000, s);
 }
 
 function updateRays(){
@@ -604,7 +669,7 @@ const toggleMap = {
   't-globe':[globeLines],
   't-rays':[sunRays],
   't-labels':[sunLabel, moonLabel],
-  't-planets':[planetsGroup, planetOrbits]
+  't-planets':[planetsContainer]
 };
 function applyToggle(id){
   const on = el(id).checked;
@@ -620,8 +685,15 @@ el('resetBtn').addEventListener('click', () => {
   state.simDays = 0; setSpeed(1); setPlaying(true);
   ['t-orbits','t-markers','t-axis','t-labels'].forEach(i => setToggle(i, true));
   ['t-globe','t-rays','t-planets'].forEach(i => setToggle(i, false));
+  el('t-realscale').checked = false; state.realTarget = 0;
   setFocus('earth', 13, viewDir(0.85, 0.42, 0.55));
   hideTip();
+});
+
+el('t-realscale').addEventListener('change', e => {
+  state.realTarget = e.target.checked ? 1 : 0;
+  if(e.target.checked) showTip('tipRealScale');
+  else if(state.tipKey === 'tipRealScale') hideTip();
 });
 
 document.querySelectorAll('.phead').forEach(h =>
@@ -760,6 +832,7 @@ function animate(){
   const dt = Math.min(clock.getDelta(), 0.05);
   if(state.playing) state.simDays += dt * state.daysPerSecond;
 
+  tickRealScale(dt);
   updateBodies();
   sunRays.visible    = el('t-rays').checked   && state.focus!=='sun';
   earthLabel.visible = el('t-labels').checked && state.focus!=='fromEarth';

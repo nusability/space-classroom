@@ -4,14 +4,25 @@ A little 3D simulator for explaining **day & night**, **the seasons**, and **the
 phases of the Moon** to a child. Sizes and distances are *not* to scale — they're
 chosen so things are easy to see and understand.
 
-## How to open it
+## 👉 Try it live
 
-Just **double-click `index.html`** — it opens in any modern web browser
-(Chrome, Safari, Firefox, Edge).
+**https://space-five-ochre.vercel.app**
 
-> The first time you open it, the page needs an internet connection to fetch the
-> 3D graphics library. After that a connection still helps, since the library
-> isn't stored offline.
+Works in any modern browser, on desktop or tablet.
+
+## Running it locally
+
+This is a small Vite app.
+
+```bash
+npm install        # one-time
+npm run dev        # local dev server with hot-reload
+npm run build      # production build → dist/
+npm run preview    # preview the production build
+```
+
+The repo lives at **https://github.com/nusability/space-classroom** — pushes to
+`main` auto-deploy to the live URL.
 
 ## Controls
 
